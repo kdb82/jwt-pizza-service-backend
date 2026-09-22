@@ -41,6 +41,20 @@ test('login rejects an incorrect password', async () => {
   expect(loginRes.body.message).toBe('unknown user');
 });
 
+test('logout rejects an invalid authorization token', async () => {
+  const logoutRes = await request(app).delete('/api/auth').set('Authorization', 'Bearer invalid-token');
+
+  expect(logoutRes.status).toBe(401);
+  expect(logoutRes.body).toEqual({ message: 'unauthorized' });
+});
+
+test('logout succeeds with a valid authorization token', async () => {
+  const logoutRes = await request(app).delete('/api/auth').set('Authorization', `Bearer ${testUserAuthToken}`);
+
+  expect(logoutRes.status).toBe(200);
+  expect(logoutRes.body).toEqual({ message: 'logout successful' });
+});
+
 function expectValidJwt(potentialJwt) {
   expect(potentialJwt).toMatch(/^[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*$/);
 }
