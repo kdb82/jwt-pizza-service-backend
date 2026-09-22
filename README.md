@@ -1,6 +1,8 @@
 # 🍕 jwt-pizza-service
 
-![Coverage badge](https://pizza-factory.cs329.click/api/badge/accountId/jwtpizzaservicecoverage)
+![Coverage badge](https://pizza-factory.cs329.click/api/badge/kdb82/jwtpizzaservicecoverage)
+
+![CI Pipeline](https://github.com/kdb82/jwt-pizza-service-backend/actions/workflows/ci.yml/badge.svg?branch=main)
 
 Backend service for making JWT pizzas. This service tracks users and franchises and orders pizzas. All order requests are passed to the JWT Pizza Factory where the pizzas are made.
 
