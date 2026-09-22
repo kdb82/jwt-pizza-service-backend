@@ -21,6 +21,26 @@ test('login', async () => {
   expect(loginRes.body.user).toMatchObject(expectedUser);
 });
 
+test('registration requires a name, email, and password', async () => {
+  const registerRes = await request(app).post('/api/auth').send({
+    name: 'pizza diner',
+    email: 'missing-password@test.com',
+  });
+
+  expect(registerRes.status).toBe(400);
+  expect(registerRes.body).toEqual({ message: 'name, email, and password are required' });
+});
+
+test('login rejects an incorrect password', async () => {
+  const loginRes = await request(app).put('/api/auth').send({
+    email: testUser.email,
+    password: 'incorrect-password',
+  });
+
+  expect(loginRes.status).toBe(404);
+  expect(loginRes.body.message).toBe('unknown user');
+});
+
 function expectValidJwt(potentialJwt) {
   expect(potentialJwt).toMatch(/^[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*$/);
 }
