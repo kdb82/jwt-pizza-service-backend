@@ -15,6 +15,10 @@
     "mysql2": "^3.24.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@eslint/json": "^2.1.0",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
     "jest": "^30.5.2",
     "supertest": "^7.2.2"
   }
