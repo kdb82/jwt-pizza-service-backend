@@ -12,3 +12,15 @@ test('get menu returns a list without authentication', async () => {
   expect(menuRes.status).toBe(200);
   expect(Array.isArray(menuRes.body)).toBe(true);
 });
+
+test('menu update requires authentication', async () => {
+  const menuRes = await request(app).put('/api/order/menu').send({
+    title: 'Test Pizza',
+    description: 'Created by a test',
+    image: 'test.png',
+    price: 0.01,
+  });
+
+  expect(menuRes.status).toBe(401);
+  expect(menuRes.body).toEqual({ message: 'unauthorized' });
+});
