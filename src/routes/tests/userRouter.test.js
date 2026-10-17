@@ -10,7 +10,7 @@ beforeAll(async () => {
   const registerRes = await request(app)
     .post('/api/auth')
     .send({
-      name: 'user route diner',
+      name: `user route diner ${Math.random().toString(36).substring(2, 12)}`,
       email: `${Math.random().toString(36).substring(2, 12)}@test.com`,
       password: 'a',
     });
@@ -36,10 +36,10 @@ test('authenticated user can update their own account', async () => {
   const updateRes = await request(app)
     .put(`/api/user/${testUser.id}`)
     .set('Authorization', `Bearer ${testUserAuthToken}`)
-    .send({ name: 'updated diner', email: testUser.email, password: 'a' });
+    .send({ name: `updated ${testUser.name}`, email: testUser.email, password: 'a' });
 
   expect(updateRes.status).toBe(200);
-  expect(updateRes.body.user).toMatchObject({ ...testUser, name: 'updated diner' });
+  expect(updateRes.body.user).toMatchObject({ ...testUser, name: `updated ${testUser.name}` });
   expect(updateRes.body.token).toMatch(/^[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*\.[a-zA-Z0-9\-_]*$/);
 });
 
@@ -62,9 +62,18 @@ test('authenticated delete returns the current not implemented response', async 
   expect(deleteRes.body).toEqual({ message: 'not implemented' });
 });
 
-test('authenticated user list returns the current not implemented response', async () => {
-  const listRes = await request(app).get('/api/user').set('Authorization', `Bearer ${testUserAuthToken}`);
+test('list users unauthorized', async () => {
+  const listUsersRes = await request(app).get('/api/user');
+
+  expect(listUsersRes.status).toBe(401);
+});
+
+test('list users', async () => {
+  const listRes = await request(app)
+    .get('/api/user')
+    .query({ name: `updated ${testUser.name}` })
+    .set('Authorization', `Bearer ${testUserAuthToken}`);
 
   expect(listRes.status).toBe(200);
-  expect(listRes.body).toEqual({ message: 'not implemented', users: [], more: false });
+  expect(listRes.body).toEqual({ users: [{ ...testUser, name: `updated ${testUser.name}` }], more: false });
 });

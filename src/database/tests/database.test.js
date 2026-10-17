@@ -136,6 +136,31 @@ test('getUser rejects unknown users', async () => {
   expect(testConnection.end).toHaveBeenCalled();
 });
 
+test('getUsers returns users with roles and a more flag', async () => {
+  const testConnection = useConnection();
+  const users = [
+    { id: 5, name: 'Diner One', email: 'one@test.com', password: 'hash-one' },
+    { id: 6, name: 'Diner Two', email: 'two@test.com', password: 'hash-two' },
+    { id: 7, name: 'Diner Three', email: 'three@test.com', password: 'hash-three' },
+  ];
+  jest
+    .spyOn(DB, 'query')
+    .mockResolvedValueOnce(users)
+    .mockResolvedValueOnce([{ role: 'diner', objectId: 0 }])
+    .mockResolvedValueOnce([{ role: 'admin', objectId: 0 }])
+    .mockResolvedValueOnce([{ role: 'franchisee', objectId: 9 }]);
+
+  const [result, more] = await DB.getUsers(1, 2, 'Diner*');
+
+  expect(result).toEqual([
+    { id: 5, name: 'Diner One', email: 'one@test.com', roles: [{ role: 'diner', objectId: undefined }] },
+    { id: 6, name: 'Diner Two', email: 'two@test.com', roles: [{ role: 'admin', objectId: undefined }] },
+  ]);
+  expect(more).toBe(true);
+  expect(DB.query).toHaveBeenNthCalledWith(1, testConnection, expect.stringContaining('LIMIT 3 OFFSET 0'), ['Diner%']);
+  expect(testConnection.end).toHaveBeenCalled();
+});
+
 test('updateUser writes changed fields and returns the refreshed user', async () => {
   const testConnection = useConnection();
   const query = jest.spyOn(DB, 'query').mockResolvedValue({});
