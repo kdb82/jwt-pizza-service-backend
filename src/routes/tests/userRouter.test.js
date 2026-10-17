@@ -1,9 +1,11 @@
 const request = require('supertest');
 const app = require('../../service');
 const { DB } = require('../../database/database');
+const { setAuth } = require('../authRouter');
 
 let testUser;
 let testUserAuthToken;
+let adminAuthToken;
 
 beforeAll(async () => {
   await DB.initialized;
@@ -16,6 +18,14 @@ beforeAll(async () => {
     });
   testUser = registerRes.body.user;
   testUserAuthToken = registerRes.body.token;
+
+  const adminUser = await DB.addUser({
+    name: `user route admin ${Math.random().toString(36).substring(2, 12)}`,
+    email: `${Math.random().toString(36).substring(2, 12)}@test.com`,
+    password: 'a',
+    roles: [{ role: 'admin' }],
+  });
+  adminAuthToken = await setAuth(adminUser);
 });
 
 test('protected routes reject requests without an authorization token', async () => {
@@ -68,11 +78,18 @@ test('list users unauthorized', async () => {
   expect(listUsersRes.status).toBe(401);
 });
 
+test('diner cannot list users', async () => {
+  const listUsersRes = await request(app).get('/api/user').set('Authorization', `Bearer ${testUserAuthToken}`);
+
+  expect(listUsersRes.status).toBe(403);
+  expect(listUsersRes.body).toEqual({ message: 'unauthorized' });
+});
+
 test('list users', async () => {
   const listRes = await request(app)
     .get('/api/user')
     .query({ name: `updated ${testUser.name}` })
-    .set('Authorization', `Bearer ${testUserAuthToken}`);
+    .set('Authorization', `Bearer ${adminAuthToken}`);
 
   expect(listRes.status).toBe(200);
   expect(listRes.body).toEqual({ users: [{ ...testUser, name: `updated ${testUser.name}` }], more: false });
