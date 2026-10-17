@@ -63,13 +63,39 @@ test('diner cannot update another user', async () => {
   expect(updateRes.body).toEqual({ message: 'unauthorized' });
 });
 
-test('authenticated delete returns the current not implemented response', async () => {
+test('delete user rejects requests without an authorization token', async () => {
+  const deleteRes = await request(app).delete(`/api/user/${testUser.id}`);
+
+  expect(deleteRes.status).toBe(401);
+});
+
+test('authenticated user can delete their own account', async () => {
+  const user = await registerTestUser();
   const deleteRes = await request(app)
-    .delete(`/api/user/${testUser.id}`)
-    .set('Authorization', `Bearer ${testUserAuthToken}`);
+    .delete(`/api/user/${user.id}`)
+    .set('Authorization', `Bearer ${user.token}`);
 
   expect(deleteRes.status).toBe(200);
-  expect(deleteRes.body).toEqual({ message: 'not implemented' });
+  expect(deleteRes.body).toEqual({ message: 'user deleted' });
+});
+
+test('diner cannot delete another user', async () => {
+  const deleteRes = await request(app)
+    .delete(`/api/user/${testUser.id + 1}`)
+    .set('Authorization', `Bearer ${testUserAuthToken}`);
+
+  expect(deleteRes.status).toBe(403);
+  expect(deleteRes.body).toEqual({ message: 'unauthorized' });
+});
+
+test('admin can delete another user', async () => {
+  const user = await registerTestUser();
+  const deleteRes = await request(app)
+    .delete(`/api/user/${user.id}`)
+    .set('Authorization', `Bearer ${adminAuthToken}`);
+
+  expect(deleteRes.status).toBe(200);
+  expect(deleteRes.body).toEqual({ message: 'user deleted' });
 });
 
 test('list users unauthorized', async () => {
@@ -94,3 +120,15 @@ test('list users', async () => {
   expect(listRes.status).toBe(200);
   expect(listRes.body).toEqual({ users: [{ ...testUser, name: `updated ${testUser.name}` }], more: false });
 });
+
+async function registerTestUser() {
+  const registerRes = await request(app)
+    .post('/api/auth')
+    .send({
+      name: `delete user ${Math.random().toString(36).substring(2, 12)}`,
+      email: `${Math.random().toString(36).substring(2, 12)}@test.com`,
+      password: 'a',
+    });
+
+  return { ...registerRes.body.user, token: registerRes.body.token };
+}

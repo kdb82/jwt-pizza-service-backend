@@ -277,6 +277,30 @@ test('deleteFranchise rolls back when a delete fails', async () => {
   expect(testConnection.commit).not.toHaveBeenCalled();
 });
 
+test('deleteUser commits role, auth, and user deletes', async () => {
+  const testConnection = useConnection();
+  const query = jest.spyOn(DB, 'query').mockResolvedValue({});
+
+  await DB.deleteUser(9);
+
+  expect(testConnection.beginTransaction).toHaveBeenCalled();
+  expect(query).toHaveBeenNthCalledWith(1, testConnection, 'DELETE FROM userRole WHERE userId=?', [9]);
+  expect(query).toHaveBeenNthCalledWith(2, testConnection, 'DELETE FROM auth WHERE userId=?', [9]);
+  expect(query).toHaveBeenNthCalledWith(3, testConnection, 'DELETE FROM user WHERE id=?', [9]);
+  expect(testConnection.commit).toHaveBeenCalled();
+  expect(testConnection.end).toHaveBeenCalled();
+});
+
+test('deleteUser rolls back when a delete fails', async () => {
+  const testConnection = useConnection();
+  jest.spyOn(DB, 'query').mockRejectedValue(new Error('delete failed'));
+
+  await expect(DB.deleteUser(9)).rejects.toMatchObject({ message: 'unable to delete user', statusCode: 500 });
+  expect(testConnection.rollback).toHaveBeenCalled();
+  expect(testConnection.commit).not.toHaveBeenCalled();
+  expect(testConnection.end).toHaveBeenCalled();
+});
+
 test('getFranchises returns public stores and a more flag', async () => {
   useConnection();
   const franchises = [{ id: 1 }, { id: 2 }, { id: 3 }];
