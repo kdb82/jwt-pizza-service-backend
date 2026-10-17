@@ -161,6 +161,15 @@ test('getUsers returns users with roles and a more flag', async () => {
   expect(testConnection.end).toHaveBeenCalled();
 });
 
+test('getUsers treats string query params as numbers', async () => {
+  const testConnection = useConnection();
+  jest.spyOn(DB, 'query').mockResolvedValue([]);
+
+  await DB.getUsers('2', '10', '*');
+
+  expect(DB.query).toHaveBeenNthCalledWith(1, testConnection, expect.stringContaining('LIMIT 11 OFFSET 10'), ['%']);
+});
+
 test('updateUser writes changed fields and returns the refreshed user', async () => {
   const testConnection = useConnection();
   const query = jest.spyOn(DB, 'query').mockResolvedValue({});

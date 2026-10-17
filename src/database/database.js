@@ -78,6 +78,7 @@ class DB {
   async getUsers(page = 1, limit = 10, nameFilter = '*') {
     const connection = await this.getConnection();
 
+    limit = Number(limit);
     const offset = (page - 1) * limit;
     nameFilter = nameFilter.replace(/\*/g, '%');
 
