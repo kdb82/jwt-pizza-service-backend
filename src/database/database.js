@@ -399,7 +399,7 @@ class DB {
         connection.end();
       }
     } catch (err) {
-      console.error(JSON.stringify({ message: 'Error initializing database', exception: err.message, connection: config.db.connection }));
+      console.error(JSON.stringify({ message: 'Error initializing database', exception: err.message, connection: { host: config.db.connection.host, user: config.db.connection.user, database: config.db.connection.database } }));
     }
   }
 
