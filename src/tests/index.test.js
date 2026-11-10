@@ -1,6 +1,8 @@
 const mockListen = jest.fn();
+const mockStartReporting = jest.fn();
 
 jest.mock('../service.js', () => ({ listen: mockListen }));
+jest.mock('../metrics.js', () => ({ startReporting: mockStartReporting }));
 
 test('server listens on port 3000 by default', () => {
   const originalArgv = process.argv;
@@ -44,5 +46,6 @@ test('server logs the port after it starts listening', () => {
   }
 
   expect(log).toHaveBeenCalledWith('Server started on port 4000');
+  expect(mockStartReporting).toHaveBeenCalled();
   log.mockRestore();
 });
