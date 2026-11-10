@@ -1,5 +1,6 @@
 const request = require('supertest');
 const app = require('../../service');
+const metrics = require('../../metrics');
 
 const testUser = { name: 'pizza diner', email: 'reg@test.com', password: 'a' };
 let testUserAuthToken;
@@ -11,9 +12,18 @@ beforeAll(async () => {
   expectValidJwt(testUserAuthToken);
 });
 
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 test('login', async () => {
+  const authAttempt = jest.spyOn(metrics, 'authAttempt');
+  const userActive = jest.spyOn(metrics, 'userActive');
+
   const loginRes = await request(app).put('/api/auth').send(testUser);
   expect(loginRes.status).toBe(200);
+  expect(authAttempt).toHaveBeenCalledWith(true);
+  expect(userActive).toHaveBeenCalledWith(loginRes.body.user.id);
   expectValidJwt(loginRes.body.token);
 
   const expectedUser = { ...testUser, roles: [{ role: 'diner' }] };
@@ -32,6 +42,7 @@ test('registration requires a name, email, and password', async () => {
 });
 
 test('login rejects an incorrect password', async () => {
+  const authAttempt = jest.spyOn(metrics, 'authAttempt');
   const loginRes = await request(app).put('/api/auth').send({
     email: testUser.email,
     password: 'incorrect-password',
@@ -39,6 +50,7 @@ test('login rejects an incorrect password', async () => {
 
   expect(loginRes.status).toBe(404);
   expect(loginRes.body.message).toBe('unknown user');
+  expect(authAttempt).toHaveBeenCalledWith(false);
 });
 
 test('logout rejects an invalid authorization token', async () => {
@@ -49,10 +61,12 @@ test('logout rejects an invalid authorization token', async () => {
 });
 
 test('logout succeeds with a valid authorization token', async () => {
+  const userLoggedOut = jest.spyOn(metrics, 'userLoggedOut');
   const logoutRes = await request(app).delete('/api/auth').set('Authorization', `Bearer ${testUserAuthToken}`);
 
   expect(logoutRes.status).toBe(200);
   expect(logoutRes.body).toEqual({ message: 'logout successful' });
+  expect(userLoggedOut).toHaveBeenCalledWith(expect.any(Number));
 });
 
 function expectValidJwt(potentialJwt) {
