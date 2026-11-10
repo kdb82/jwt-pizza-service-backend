@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const app = require('../../service');
 const config = require('../../config');
 const { DB } = require('../../database/database');
+const metrics = require('../../metrics');
 
 let diner;
 let dinerAuthToken;
@@ -92,11 +93,13 @@ test('create order returns the order and factory result', async () => {
     ok: true,
     json: jest.fn().mockResolvedValue({ reportUrl: 'https://example.com/report', jwt: 'factory-token' }),
   });
+  const purchase = jest.spyOn(metrics, 'pizzaPurchase');
 
   const orderRes = await request(app).post('/api/order').set('Authorization', `Bearer ${dinerAuthToken}`).send(orderRequest);
 
   expect(orderRes.status).toBe(200);
   expect(orderRes.body).toEqual({ order: savedOrder, followLinkToEndChaos: 'https://example.com/report', jwt: 'factory-token' });
+  expect(purchase).toHaveBeenCalledWith(true, expect.any(Number), 0.01, 1);
 });
 
 test('create order reports a factory failure', async () => {
@@ -106,9 +109,24 @@ test('create order reports a factory failure', async () => {
     ok: false,
     json: jest.fn().mockResolvedValue({ reportUrl: 'https://example.com/failure' }),
   });
+  const purchase = jest.spyOn(metrics, 'pizzaPurchase');
 
   const orderRes = await request(app).post('/api/order').set('Authorization', `Bearer ${dinerAuthToken}`).send(orderRequest);
 
   expect(orderRes.status).toBe(500);
   expect(orderRes.body).toEqual({ message: 'Failed to fulfill order at factory', followLinkToEndChaos: 'https://example.com/failure' });
+  expect(purchase).toHaveBeenCalledWith(false, expect.any(Number), 0, 1);
+});
+
+test('create order records a failed purchase when the factory cannot be reached', async () => {
+  const orderRequest = { franchiseId: 1, storeId: 1, items: [{ menuId: 1, description: 'Test Pizza', price: 0.01 }] };
+  jest.spyOn(DB, 'addDinerOrder').mockResolvedValue({ ...orderRequest, id: 3 });
+  jest.spyOn(global, 'fetch').mockRejectedValue(new Error('factory unreachable'));
+  const purchase = jest.spyOn(metrics, 'pizzaPurchase');
+
+  const orderRes = await request(app).post('/api/order').set('Authorization', `Bearer ${dinerAuthToken}`).send(orderRequest);
+
+  expect(orderRes.status).toBe(500);
+  expect(orderRes.body.message).toBe('factory unreachable');
+  expect(purchase).toHaveBeenCalledWith(false, expect.any(Number), 0, 1);
 });
