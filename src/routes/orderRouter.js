@@ -4,6 +4,7 @@ const { Role, DB } = require('../database/database.js');
 const { authRouter } = require('./authRouter.js');
 const { asyncHandler, StatusCodeError } = require('../endpointHelper.js');
 const metrics = require('../metrics.js');
+const logger = require('../logger.js');
 
 const orderRouter = express.Router();
 
@@ -86,14 +87,17 @@ orderRouter.post(
     const start = performance.now();
     let r;
     let j;
+    const factoryRequest = { diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order };
     try {
       r = await fetch(`${config.factory.url}/api/order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${config.factory.apiKey}` },
-        body: JSON.stringify({ diner: { id: req.user.id, name: req.user.name, email: req.user.email }, order }),
+        body: JSON.stringify(factoryRequest),
       });
       j = await r.json();
+      void logger.factoryLogger(factoryRequest, j, r.status);
     } catch (error) {
+      void logger.factoryLogger(factoryRequest, { error: error.message }, 500);
       metrics.pizzaPurchase(false, performance.now() - start, 0, pizzaCount);
       throw error;
     }
