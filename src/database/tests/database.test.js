@@ -354,10 +354,11 @@ test('deleteStore deletes the matching franchise store', async () => {
 
 test('_getConnection selects the configured database', async () => {
   const testConnection = { query: jest.fn() };
+  const query = testConnection.query;
   mysql.createConnection.mockResolvedValueOnce(testConnection);
 
   await expect(DB._getConnection()).resolves.toBe(testConnection);
-  expect(testConnection.query).toHaveBeenCalledWith('USE pizza');
+  expect(query).toHaveBeenCalledWith('USE pizza');
 });
 
 test('checkDatabaseExists reports whether the schema exists', async () => {
