@@ -1,0 +1,94 @@
+const logger = require('../logger');
+const config = require('../config');
+const express = require('express');
+const request = require('supertest');
+
+const originalNodeEnv = process.env.NODE_ENV;
+beforeEach(() => { process.env.NODE_ENV = 'development'; });
+afterEach(() => {
+  process.env.NODE_ENV = originalNodeEnv;
+  jest.restoreAllMocks();
+});
+
+test('sanitizes nested secrets and token-like strings', () => {
+  const clean = logger.sanitize({
+    password: 'secret',
+    nested: { token: 'abc', email: 'diner@example.com', note: 'Bearer private-token', detail: 'password=another-secret' },
+    items: [{ apiKey: 'glc_private', jwt: 'header.payload.signature' }],
+  });
+  expect(JSON.stringify(clean)).not.toMatch(/secret|private|example.com|header.payload.signature/);
+  expect(clean.nested.note).toBe('Bearer [REDACTED]');
+  expect(clean.nested.detail).toBe('password=[REDACTED]');
+});
+
+test('sends sanitized Loki JSON using Basic authentication', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  await logger.log('info', 'http', { method: 'POST', reqBody: { password: 'hidden' } });
+  const [url, options] = fetchMock.mock.calls[0];
+  const body = JSON.parse(options.body);
+  expect(url).toBe(config.logging.endpointUrl);
+  expect(options.headers.Authorization).toMatch(/^Basic /);
+  expect(body.streams[0].stream).toMatchObject({ component: config.logging.source, type: 'http' });
+  expect(body.streams[0].values[0][0]).toMatch(/^\d+$/);
+  expect(body.streams[0].values[0][1]).not.toContain('hidden');
+});
+
+test('database logger preserves query structure but not SQL literals', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  await logger.dbLogger("SELECT * FROM user WHERE email='diner@example.com'");
+  const line = JSON.parse(fetchMock.mock.calls[0][1].body).streams[0].values[0][1];
+  expect(line).toContain('SELECT * FROM user WHERE email=');
+  expect(line).not.toContain('diner@example.com');
+});
+
+test('factory logger removes user email and response JWT', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  await logger.factoryLogger({ diner: { email: 'diner@example.com' }, order: { id: 1 } }, { jwt: 'factory-secret' }, 200);
+  const line = JSON.parse(fetchMock.mock.calls[0][1].body).streams[0].values[0][1];
+  expect(line).toContain('"order"');
+  expect(line).not.toMatch(/example.com|factory-secret/);
+});
+
+test('HTTP logger records status, identity and sanitized bodies after authentication', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  const app = express();
+  app.use(express.json());
+  app.use(logger.httpLogger);
+  app.use((req, res, next) => {
+    req.user = { id: 7, name: 'Diner', email: 'diner@example.com' };
+    next();
+  });
+  app.post('/hello', (req, res) => res.status(201).json({ hello: req.body.name, token: 'secret' }));
+
+  await request(app).post('/hello').set('Authorization', 'Bearer private-token').send({ name: 'Diner', password: 'private' });
+
+  const line = JSON.parse(JSON.parse(fetchMock.mock.calls[0][1].body).streams[0].values[0][1]);
+  expect(line).toMatchObject({ method: 'POST', path: '/hello', statusCode: 201, authorized: true, user: { id: 7, name: 'Diner' } });
+  expect(line.reqBody.password).toBe('[REDACTED]');
+  expect(line.resBody.token).toBe('[REDACTED]');
+  expect(JSON.stringify(line)).not.toMatch(/private|diner@example.com/);
+});
+
+test('SQL and factory logs include the authenticated request user', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  const app = express();
+  app.use(logger.httpLogger);
+  app.use((req, res, next) => {
+    req.user = { id: 7, name: 'Diner' };
+    next();
+  });
+  app.get('/order', async (req, res) => {
+    await logger.dbLogger('SELECT * FROM menu');
+    await logger.factoryLogger({ order: { id: 1 } }, { reportUrl: 'https://example.com' }, 200);
+    res.sendStatus(204);
+  });
+
+  await request(app).get('/order');
+
+  const records = fetchMock.mock.calls.map(([, options]) => {
+    const stream = JSON.parse(options.body).streams[0];
+    return { type: stream.stream.type, line: JSON.parse(stream.values[0][1]) };
+  });
+  expect(records.find((record) => record.type === 'db').line.user).toEqual({ id: 7, name: 'Diner' });
+  expect(records.find((record) => record.type === 'factory').line.user).toEqual({ id: 7, name: 'Diner' });
+});
