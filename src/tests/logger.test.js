@@ -59,8 +59,9 @@ test('error logs retain the sanitized request body', async () => {
   app.post('/broken', (req, res, next) => next(new Error('Order failed')));
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
-    void logger.errorLogger(err);
-    res.status(500).json({ message: err.message });
+    const responseBody = { message: err.message, stack: err.stack };
+    void logger.errorLogger(err, responseBody);
+    res.status(500).json(responseBody);
   });
 
   await request(app).post('/broken').send({ item: 'Veggie', password: 'private' });
@@ -71,6 +72,7 @@ test('error logs retain the sanitized request body', async () => {
   });
   for (const type of ['unhandledError', 'http']) {
     expect(records.find((record) => record.type === type).line.reqBody).toEqual({ item: 'Veggie', password: '[REDACTED]' });
+    expect(records.find((record) => record.type === type).line.resBody).toEqual({ message: 'Order failed', stack: '[REDACTED]' });
   }
 });
 
