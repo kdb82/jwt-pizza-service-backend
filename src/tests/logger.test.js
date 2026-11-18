@@ -51,6 +51,19 @@ test('factory logger removes user email and response JWT', async () => {
   expect(JSON.stringify(line)).not.toMatch(/example.com|factory-secret/);
 });
 
+test('factory failures retain bodies and describe the error', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  await logger.factoryLogger({ order: { id: 1 } }, { message: 'Factory unavailable' }, 503);
+  const stream = JSON.parse(fetchMock.mock.calls[0][1].body).streams[0];
+  const line = JSON.parse(stream.values[0][1]);
+  expect(stream.stream.level).toBe('error');
+  expect(line).toMatchObject({ name: 'FactoryError', message: 'Factory unavailable', reqBody: { order: { id: 1 } }, resBody: { message: 'Factory unavailable' } });
+
+  await logger.factoryLogger({ order: { id: 2 } }, { error: 'Connection lost' }, 500, new TypeError('Connection lost'));
+  const thrownLine = JSON.parse(JSON.parse(fetchMock.mock.calls[1][1].body).streams[0].values[0][1]);
+  expect(thrownLine).toMatchObject({ name: 'TypeError', message: 'Connection lost', reqBody: { order: { id: 2 } }, resBody: { error: 'Connection lost' } });
+});
+
 test('error logs retain the sanitized request body', async () => {
   const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
   const app = express();
@@ -60,6 +73,7 @@ test('error logs retain the sanitized request body', async () => {
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     const responseBody = { message: err.message, stack: err.stack };
+    res.locals.logError = err;
     void logger.errorLogger(err, responseBody);
     res.status(500).json(responseBody);
   });
@@ -73,7 +87,34 @@ test('error logs retain the sanitized request body', async () => {
   for (const type of ['unhandledError', 'http']) {
     expect(records.find((record) => record.type === type).line.reqBody).toEqual({ item: 'Veggie', password: '[REDACTED]' });
     expect(records.find((record) => record.type === type).line.resBody).toEqual({ message: 'Order failed', stack: '[REDACTED]' });
+    expect(records.find((record) => record.type === type).line).toMatchObject({ name: 'Error', message: 'Order failed' });
   }
+});
+
+test('HTTP logs always include both body fields for bodyless and failed requests', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  const app = express();
+  app.use(logger.httpLogger);
+  app.use(express.json());
+  app.get('/plain', (req, res) => res.end('plain response'));
+  app.get('/missing', (req, res) => res.status(404).json({ message: 'not found' }));
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    res.locals.logError = err;
+    res.status(400).json({ message: 'invalid JSON' });
+  });
+
+  await request(app).get('/plain');
+  await request(app).get('/missing');
+  await request(app).post('/plain').set('Content-Type', 'application/json').send('{broken');
+
+  const lines = fetchMock.mock.calls.map(([, options]) => {
+    const stream = JSON.parse(options.body).streams[0];
+    return JSON.parse(stream.values[0][1]);
+  });
+  expect(lines.find((line) => line.statusCode === 200)).toMatchObject({ reqBody: {}, resBody: 'plain response' });
+  expect(lines.find((line) => line.statusCode === 404)).toMatchObject({ reqBody: {}, resBody: { message: 'not found' }, name: 'HttpError', message: 'not found' });
+  expect(lines.find((line) => line.statusCode === 400)).toMatchObject({ reqBody: null, resBody: { message: 'invalid JSON' }, name: 'SyntaxError' });
 });
 
 test('HTTP logger records status, identity and sanitized bodies after authentication', async () => {
