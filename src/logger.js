@@ -93,10 +93,11 @@ function factoryLogger(requestBody, responseBody, statusCode) {
   });
 }
 
-function errorLogger(err) {
+function errorLogger(err, responseBody) {
   return log('error', 'unhandledError', {
     user: currentUser(), name: err?.name, message: err?.message, statusCode: err?.statusCode,
     reqBody: requests.getStore()?.req.body,
+    resBody: responseBody,
   });
 }
 
