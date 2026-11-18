@@ -44,9 +44,34 @@ test('database logger preserves query structure but not SQL literals', async () 
 test('factory logger removes user email and response JWT', async () => {
   const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
   await logger.factoryLogger({ diner: { email: 'diner@example.com' }, order: { id: 1 } }, { jwt: 'factory-secret' }, 200);
-  const line = JSON.parse(fetchMock.mock.calls[0][1].body).streams[0].values[0][1];
-  expect(line).toContain('"order"');
-  expect(line).not.toMatch(/example.com|factory-secret/);
+  const line = JSON.parse(JSON.parse(fetchMock.mock.calls[0][1].body).streams[0].values[0][1]);
+  expect(line.reqBody.order).toEqual({ id: 1 });
+  expect(line.reqBody.diner.email).toBe('[REDACTED]');
+  expect(line.resBody.jwt).toBe('[REDACTED]');
+  expect(JSON.stringify(line)).not.toMatch(/example.com|factory-secret/);
+});
+
+test('error logs retain the sanitized request body', async () => {
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true });
+  const app = express();
+  app.use(express.json());
+  app.use(logger.httpLogger);
+  app.post('/broken', (req, res, next) => next(new Error('Order failed')));
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    void logger.errorLogger(err);
+    res.status(500).json({ message: err.message });
+  });
+
+  await request(app).post('/broken').send({ item: 'Veggie', password: 'private' });
+
+  const records = fetchMock.mock.calls.map(([, options]) => {
+    const stream = JSON.parse(options.body).streams[0];
+    return { type: stream.stream.type, line: JSON.parse(stream.values[0][1]) };
+  });
+  for (const type of ['unhandledError', 'http']) {
+    expect(records.find((record) => record.type === type).line.reqBody).toEqual({ item: 'Veggie', password: '[REDACTED]' });
+  }
 });
 
 test('HTTP logger records status, identity and sanitized bodies after authentication', async () => {
