@@ -51,8 +51,9 @@ app.use('*', (req, res) => {
 
 // Default error handler for all exceptions and errors.
 app.use((err, req, res, next) => {
-  void logger.errorLogger(err);
-  res.status(err.statusCode ?? 500).json({ message: err.message, stack: err.stack });
+  const responseBody = { message: err.message, stack: err.stack };
+  void logger.errorLogger(err, responseBody);
+  res.status(err.statusCode ?? 500).json(responseBody);
   next();
 });
 
