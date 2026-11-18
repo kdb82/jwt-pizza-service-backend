@@ -97,7 +97,7 @@ orderRouter.post(
       j = await r.json();
       void logger.factoryLogger(factoryRequest, j, r.status);
     } catch (error) {
-      void logger.factoryLogger(factoryRequest, { error: error.message }, 500);
+      void logger.factoryLogger(factoryRequest, { error: error.message }, 500, error);
       metrics.pizzaPurchase(false, performance.now() - start, 0, pizzaCount);
       throw error;
     }
