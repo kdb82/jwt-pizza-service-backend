@@ -89,13 +89,14 @@ function dbLogger(sql) {
 
 function factoryLogger(requestBody, responseBody, statusCode) {
   return log(statusCode >= 500 ? 'error' : 'info', 'factory', {
-    user: currentUser(), requestBody, responseBody, statusCode,
+    user: currentUser(), reqBody: requestBody, resBody: responseBody, statusCode,
   });
 }
 
 function errorLogger(err) {
   return log('error', 'unhandledError', {
     user: currentUser(), name: err?.name, message: err?.message, statusCode: err?.statusCode,
+    reqBody: requests.getStore()?.req.body,
   });
 }
 
