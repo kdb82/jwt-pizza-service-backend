@@ -36,6 +36,17 @@ function currentUser() {
   return user ? { id: user.id, name: user.name } : undefined;
 }
 
+function responseMessage(body) {
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return body;
+    }
+  }
+  return body && typeof body === 'object' ? body.message ?? body.error : undefined;
+}
+
 function log(level, type, data) {
   if (process.env.NODE_ENV === 'test') return Promise.resolve();
   const logging = config.logging;
@@ -61,20 +72,30 @@ function httpLogger(req, res, next) {
   requests.run({ req }, () => {
     let responseBody;
     const send = res.send;
+    const end = res.end;
     res.send = function (body) {
       responseBody = body;
       return send.call(this, body);
     };
+    res.end = function (chunk, ...args) {
+      if (responseBody === undefined && chunk !== undefined) responseBody = chunk;
+      return end.call(this, chunk, ...args);
+    };
     res.once('finish', () => {
       const statusCode = res.statusCode;
+      const error = res.locals.logError;
       void log(statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info', 'http', {
         method: req.method,
         path: req.path,
         statusCode,
         authorized: Boolean(req.headers.authorization),
         user: req.user ? { id: req.user.id, name: req.user.name } : undefined,
-        reqBody: req.body,
-        resBody: responseBody,
+        reqBody: error?.type === 'entity.parse.failed' ? null : req.body ?? null,
+        resBody: responseBody ?? null,
+        ...(statusCode >= 400 ? {
+          name: error?.name ?? 'HttpError',
+          message: error?.message ?? responseMessage(responseBody) ?? res.statusMessage,
+        } : {}),
       });
     });
     next();
@@ -87,9 +108,11 @@ function dbLogger(sql) {
   return log('info', 'db', { query, user: currentUser() });
 }
 
-function factoryLogger(requestBody, responseBody, statusCode) {
-  return log(statusCode >= 500 ? 'error' : 'info', 'factory', {
+function factoryLogger(requestBody, responseBody, statusCode, error) {
+  const failed = statusCode >= 400;
+  return log(failed ? 'error' : 'info', 'factory', {
     user: currentUser(), reqBody: requestBody, resBody: responseBody, statusCode,
+    ...(failed ? { name: error?.name ?? 'FactoryError', message: error?.message ?? responseMessage(responseBody) ?? `Factory HTTP ${statusCode}` } : {}),
   });
 }
 
